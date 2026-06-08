@@ -1,0 +1,51 @@
+:root {
+  --navy: #0A1628;
+  --navy2: #0D1F3C;
+  --dark: #102A4C;
+  --mid: #1B4B8A;
+  --blue: #1E6FD9;
+  --bmed: #3B82F6;
+  --blt: #60A5FA;
+  --sky: #BAD6FF;
+  --skylt: #E0EEFF;
+  --skyxs: #F0F6FF;
+  --surface: #fff;
+  --s2: #F0F6FF;
+  --s3: #E0EEFF;
+  --border: rgba(30, 111, 217, 0.15);
+  --border2: rgba(30, 111, 217, 0.28);
+  --green: #10B981;
+  --greenl: #D1FAE5;
+  --warn: #F59E0B;
+  --warnl: #FEF3C7;
+  --red: #EF4444;
+  --redl: #FEE2E2;
+  --gold: #F59E0B;
+  --goldl: #FEF3C7;
+  --text: #0A1628;
+  --t2: #4A6A8A;
+  --t3: #8AAAC8;
+  --r: 12px;
+  --rsm: 7px;
+  --rxl: 18px;
+  --shadow: 0 2px 16px rgba(10, 22, 40, 0.09);
+  --shadowmd: 0 4px 28px rgba(10, 22, 40, 0.14);
+}
+
+*, *::before, *::after {
+  box-sizing: border-box;
+  margin: 0;
+  padding: 0;
+}
+
+html {
+  scroll-behavior: smooth;
+}
+
+body {
+  font-family: "Poppins", sans-serif;
+  background: var(--skyxs);
+  color: var(--text);
+  min-height: 100vh;
+  font-size: 13px;
+}
