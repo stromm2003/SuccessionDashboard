@@ -3829,8 +3829,9 @@ async function autoLoadFromUrl(url, sourceId = 'sap') {
     if (topFile) topFile.textContent = s.file.name;
     if (topRec)  topRec.textContent  = ALL.length + ' rows';
 
-    document.getElementById('upload-screen').style.display = 'none';
-    document.getElementById('dashboard').style.display     = 'block';
+    const ls = document.getElementById('loading-screen');
+    if (ls) ls.style.display = 'none';
+    document.getElementById('dashboard').style.display = 'block';
 
     buildFilters();
     FILTERED = [...ALL];
@@ -3977,8 +3978,9 @@ async function autoLoadAllSources(sapUrl, transcriptUrl, progressUrl) {
 
   } catch (err) {
     console.error('[autoLoadAllSources] failed:', err.message, err);
-    // fall back to manual upload screen
-    if (typeof renderHub === 'function') renderHub();
+    const errEl = document.getElementById('loadingError');
+    if (errEl) { errEl.textContent = 'Failed to load data: ' + err.message; errEl.style.display = 'block'; }
+    else { console.error('[autoLoadAllSources]', err.message); }
   }
 }
 window.autoLoadAllSources = autoLoadAllSources;
