@@ -10,8 +10,13 @@ import './logic.js';
 export default function App() {
   useEffect(() => {
 
-    // DOM-dependent init (must run after React renders)
-    if (typeof window.renderHub === 'function') window.renderHub();
+    // Auto-load the static data file from public/data/
+    // Falls back to the upload screen if the file is not found.
+    if (typeof window.autoLoadFromUrl === 'function') {
+      window.autoLoadFromUrl('/data/succession_data.xlsx');
+    } else {
+      window.renderHub?.();
+    }
 
     const fileInput = document.getElementById('fileInput');
     if (fileInput) {

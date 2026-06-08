@@ -3781,3 +3781,64 @@ const _publicFns = {
   _pgGo, _ghFilter, esPage, closeModal, confirmLoad,
 };
 Object.assign(window, _publicFns);
+
+// ─────────────────────────────────────────────────────────────────────────────
+// AUTO-LOAD: fetch a file from the public directory and build the dashboard
+// Call this instead of renderHub() to skip the upload screen entirely.
+// ─────────────────────────────────────────────────────────────────────────────
+async function autoLoadFromUrl(url, sourceId = 'sap') {
+  try {
+    const res = await fetch(url);
+    if (!res.ok) throw new Error('HTTP ' + res.status);
+    const buffer = await res.arrayBuffer();
+    const wb = XLSX.read(new Uint8Array(buffer), { type: 'array', raw: false });
+    const idx = wb.SheetNames.findIndex(
+      s => s.toLowerCase() !== 'instructions' && s.toLowerCase() !== 'instruction'
+    );
+    const ws = wb.Sheets[wb.SheetNames[idx >= 0 ? idx : 0]];
+    const raw = XLSX.utils.sheet_to_json(ws, { defval: '', raw: false });
+    if (!raw.length) throw new Error('No data rows in file');
+
+    const headers = Object.keys(raw[0]);
+    const savedOverrides = window.MAPPING_CONFIG && window.MAPPING_CONFIG.loadOverrides
+      ? window.MAPPING_CONFIG.loadOverrides(sourceId) : null;
+
+    const mapping = {};
+    headers.forEach(h => {
+      if (savedOverrides && Object.prototype.hasOwnProperty.call(savedOverrides, h)) {
+        const canon = savedOverrides[h];
+        if (canon) mapping[h] = canon;
+      } else {
+        const match = _fuzzyMatch(h);
+        if (match) mapping[h] = match.canonical;
+      }
+    });
+
+    const s = SOURCES[sourceId];
+    s.file = { name: url.split('/').pop() };
+    s.raw = raw;
+    s.headers = headers;
+    s.mapping = mapping;
+    validateSource(sourceId);
+
+    ALL = buildIntegratedData();
+    if (!ALL.length) throw new Error('No rows after integration');
+
+    const topFile = document.getElementById('topFile');
+    const topRec  = document.getElementById('topRec');
+    if (topFile) topFile.textContent = s.file.name;
+    if (topRec)  topRec.textContent  = ALL.length + ' rows';
+
+    document.getElementById('upload-screen').style.display = 'none';
+    document.getElementById('dashboard').style.display     = 'block';
+
+    buildFilters();
+    FILTERED = [...ALL];
+    renderAll();
+  } catch (err) {
+    console.warn('Auto-load failed (' + url + '):', err.message);
+    // Fall back to the manual upload screen
+    renderHub();
+  }
+}
+window.autoLoadFromUrl = autoLoadFromUrl;
