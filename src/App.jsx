@@ -10,10 +10,14 @@ import './logic.js';
 export default function App() {
   useEffect(() => {
 
-    // Auto-load the static data file from public/data/
-    // Falls back to the upload screen if the file is not found.
-    if (typeof window.autoLoadFromUrl === 'function') {
-      window.autoLoadFromUrl('/data/succession_data.xlsx');
+    // Auto-load all 3 data files from public/data/ and build the dashboard.
+    // Falls back to the manual upload screen if any file fails.
+    if (typeof window.autoLoadAllSources === 'function') {
+      window.autoLoadAllSources(
+        '/data/succession_dummy_data_600_3.xlsx',  // SAP Employee Master
+        '/data/dw_lnd_1.csv',                      // MyLearning Transcript
+        '/data/completion-detailed-report_1.xlsx'  // MyLearning Course Progress
+      );
     } else {
       window.renderHub?.();
     }

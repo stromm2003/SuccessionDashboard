@@ -3842,3 +3842,143 @@ async function autoLoadFromUrl(url, sourceId = 'sap') {
   }
 }
 window.autoLoadFromUrl = autoLoadFromUrl;
+
+// ─────────────────────────────────────────────────────────────────────────────
+// AUTO-LOAD HELPERS
+// ─────────────────────────────────────────────────────────────────────────────
+
+async function _fetchAndParse(url) {
+  const res = await fetch(url);
+  if (!res.ok) throw new Error('HTTP ' + res.status + ' fetching ' + url);
+  const buffer = await res.arrayBuffer();
+  const wb = XLSX.read(new Uint8Array(buffer), { type: 'array', raw: false });
+  const idx = wb.SheetNames.findIndex(
+    s => !['instructions','instruction'].includes(s.toLowerCase())
+  );
+  const ws = wb.Sheets[wb.SheetNames[idx >= 0 ? idx : 0]];
+  const raw = XLSX.utils.sheet_to_json(ws, { defval: '', raw: false });
+  return { raw, headers: raw.length ? Object.keys(raw[0]) : [], name: url.split('/').pop() };
+}
+
+function _autoMapColumns(headers, sourceId) {
+  const savedOverrides = window.MAPPING_CONFIG && window.MAPPING_CONFIG.loadOverrides
+    ? window.MAPPING_CONFIG.loadOverrides(sourceId) : null;
+  const mapping = {};
+  headers.forEach(h => {
+    if (savedOverrides && Object.prototype.hasOwnProperty.call(savedOverrides, h)) {
+      const canon = savedOverrides[h];
+      if (canon) mapping[h] = canon;
+    } else {
+      const match = _fuzzyMatch(h);
+      if (match) mapping[h] = match.canonical;
+    }
+  });
+  return mapping;
+}
+
+function _mergeMyLearningData(transcript, progress) {
+  const tKeys = _detectKeyHeaders(transcript.headers);
+  const pKeys = _detectKeyHeaders(progress.headers);
+
+  const progressByNik = {}, progressByEmail = {}, progressByName = {};
+  progress.raw.forEach(row => {
+    const nik = pKeys.nik   ? _norm(row[pKeys.nik])   : '';
+    const eml = pKeys.email ? _norm(row[pKeys.email]) : '';
+    const nm  = pKeys.name  ? _norm(row[pKeys.name])  : '';
+    if (nik) (progressByNik[nik]   = progressByNik[nik]   || []).push(row);
+    if (eml) (progressByEmail[eml] = progressByEmail[eml] || []).push(row);
+    if (nm)  (progressByName[nm]   = progressByName[nm]   || []).push(row);
+  });
+
+  const merged = [];
+  const matchedKeys = new Set();
+  const pKeyFn = r => _norm((pKeys.nik && r[pKeys.nik]) || (pKeys.email && r[pKeys.email]) || (pKeys.name && r[pKeys.name]) || '') + '|' + _norm(pKeys.course ? r[pKeys.course] || '' : '');
+
+  transcript.raw.forEach(trow => {
+    const nik     = tKeys.nik   ? _norm(trow[tKeys.nik])   : '';
+    const eml     = tKeys.email ? _norm(trow[tKeys.email]) : '';
+    const nm      = tKeys.name  ? _norm(trow[tKeys.name])  : '';
+    const courseN = tKeys.course ? _norm(trow[tKeys.course]) : '';
+
+    let candidates = null;
+    if (nik && progressByNik[nik])       candidates = progressByNik[nik];
+    else if (eml && progressByEmail[eml]) candidates = progressByEmail[eml];
+    else if (nm && progressByName[nm])    candidates = progressByName[nm];
+
+    if (!candidates) { merged.push({ ...trow }); return; }
+
+    let prow = courseN ? candidates.find(pr => _norm(pr[pKeys.course] || '') === courseN) : null;
+    if (!prow) prow = candidates[0];
+    matchedKeys.add(pKeyFn(prow));
+
+    const combined = { ...trow };
+    Object.keys(prow).forEach(k => {
+      const tv = combined[k];
+      const pv = prow[k];
+      if ((tv === undefined || tv === null || tv === '' || tv === '-') && pv !== '' && pv !== null && pv !== undefined) {
+        combined[k] = pv;
+      } else if (!(k in combined)) {
+        combined[k] = pv;
+      }
+    });
+    merged.push(combined);
+  });
+
+  // orphan progress rows
+  progress.raw.forEach(prow => {
+    if (!matchedKeys.has(pKeyFn(prow))) merged.push({ ...prow });
+  });
+
+  return merged;
+}
+
+async function autoLoadAllSources(sapUrl, transcriptUrl, progressUrl) {
+  try {
+    // 1. SAP Employee Master
+    const sap = await _fetchAndParse(sapUrl);
+    if (!sap.raw.length) throw new Error('SAP file has no data rows');
+    const sapSrc = SOURCES['sap'];
+    sapSrc.file    = { name: sap.name };
+    sapSrc.raw     = sap.raw;
+    sapSrc.headers = sap.headers;
+    sapSrc.mapping = _autoMapColumns(sap.headers, 'sap');
+    validateSource('sap');
+
+    // 2. MyLearning — merge transcript + progress
+    const transcript = await _fetchAndParse(transcriptUrl);
+    const progress   = await _fetchAndParse(progressUrl);
+    const mergedRows = _mergeMyLearningData(transcript, progress);
+
+    const allHeaders = Array.from(
+      mergedRows.reduce((s, r) => { Object.keys(r).forEach(k => s.add(k)); return s; }, new Set())
+    );
+    const mlSrc = SOURCES['mylearning'];
+    mlSrc.file    = { name: 'merged_mylearning' };
+    mlSrc.raw     = mergedRows;
+    mlSrc.headers = allHeaders;
+    mlSrc.mapping = _autoMapColumns(allHeaders, 'mylearning');
+    validateSource('mylearning');
+
+    // 3. Build
+    ALL = buildIntegratedData();
+    if (!ALL.length) throw new Error('No rows after data integration');
+
+    const topFile = document.getElementById('topFile');
+    const topRec  = document.getElementById('topRec');
+    if (topFile) topFile.textContent = '3 sources loaded';
+    if (topRec)  topRec.textContent  = ALL.length + ' rows';
+
+    document.getElementById('upload-screen').style.display = 'none';
+    document.getElementById('dashboard').style.display     = 'block';
+
+    buildFilters();
+    FILTERED = [...ALL];
+    renderAll();
+
+  } catch (err) {
+    console.error('[autoLoadAllSources] failed:', err.message, err);
+    // fall back to manual upload screen
+    if (typeof renderHub === 'function') renderHub();
+  }
+}
+window.autoLoadAllSources = autoLoadAllSources;
